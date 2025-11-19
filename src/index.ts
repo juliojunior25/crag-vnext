@@ -1,0 +1,28 @@
+// Core
+export * from './core';
+
+// Services
+export * from './services';
+
+// Backends
+export * from './backends';
+
+// Models
+export * from './models';
+
+// Interfaces
+export * from './interfaces';
+
+// Utils (exportar apenas os principais)
+export { createTreeLogger, treeLogger, logger, setLogLevel } from './utils/logger';
+export { inferLanguageFromFilePath } from './utils/language';
+export {
+  hasOllamaCloudApiKey,
+  getOllamaCloudApiKey,
+  setOllamaCloudApiKey,
+  saveOllamaCloudApiKeyToEnv,
+  setupOllamaCloudInteractive,
+  setupOllamaCloudAuto,
+  validateOllamaCloudApiKey,
+} from './utils/ollamaCloudSetup';
+
