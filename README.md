@@ -1,388 +1,172 @@
-# @cragjs/indexing
+# CRAG - Code RAG
 
-Módulo de indexação e busca semântica para CRAGCore.
+Busca semântica de código com indexação híbrida (lexical + vetorial) usando PostgreSQL/pgvector, Ollama e Tree-sitter.
 
-## Recursos
+## Stack
 
-- 🔍 **Busca Semântica**: Busque código por significado, não por texto exato
-- 🤖 **Embeddings Locais**: Suporte nativo para Ollama (local) e OpenAI
-- 📦 **Bancos Vetoriais**: Memória, JSON, Pinecone e Chroma
-- 🎯 **Múltiplas Estratégias**: Chunking por AST, sliding window ou fixed-size
-- 🔗 **Grafo de Dependências**: Análise automática de dependências entre arquivos
-- ⚡ **Alto Desempenho**: Batch processing e cache inteligente
+- **PostgreSQL + pgvector** - armazenamento vetorial e busca full-text
+- **Ollama** - embeddings locais (qwen3-embedding:0.6b)
+- **Tree-sitter** - chunking syntax-aware por AST
+- **Fastify** - API REST
+- **Commander** - CLI
 
-## Instalação
+## Pré-requisitos
+
+- Node.js >= 18.18
+- Docker (para PostgreSQL com pgvector)
+- [Ollama](https://ollama.com) rodando localmente
 
 ```bash
-npm install @cragjs/indexing
+# Baixar o modelo de embedding
+ollama pull qwen3-embedding:0.6b
 ```
 
-## Uso Básico
+## Setup
 
-### API Simplificada (Recomendado)
+```bash
+# 1. Subir PostgreSQL com pgvector
+make up
 
-A forma mais simples de usar o CRAGCore é através da classe `CRAGCore`, que aceita todas as configurações em um único objeto:
+# 2. Copiar e ajustar variáveis de ambiente
+cp .env.example .env
 
-```typescript
-import { CRAGCore } from '@cragjs/indexing';
+# 3. Instalar dependências
+npm install
 
-// Criar instância com todas as configurações
-const rag = new CRAGCore({
-  projectPath: '/path/to/your/project',
-  projectId: 'my-project',
-  
-  // Configuração do provider de embeddings
-  embedding: {
-    type: 'ollama',
-    model: 'embeddinggemma',
-    baseURL: 'http://localhost:11434',
-    timeout: 60000,
-  },
-  
-  // Configuração do banco vetorial
-  vectorDatabase: {
-    type: 'json',
-    storagePath: '.crag_cache',
-    persist: true,
-  },
-  
-  // Configurações opcionais de indexação
-  indexing: {
-    excludeDirectories: ['node_modules', '.git', 'dist'],
-    buildDependencyGraph: true,
-    chunkingStrategy: 'ast',
-  },
-  
-  // Configurações de armazenamento
-  storage: {
-    path: '.crag_cache',
-    persist: true,
-  },
-});
-
-// Indexar o repositório
-const repository = await rag.index();
-
-// Buscar no código
-const results = await rag.query({
-  text: 'como fazer autenticação de usuário?',
-  topK: 5,
-  minSimilarity: 0.3,
-});
-
-// Exibir resultados
-results.forEach(result => {
-  console.log(`${result.filePath}:${result.metadata.startLine}`);
-  console.log(`Similaridade: ${(result.similarity * 100).toFixed(1)}%`);
-  console.log(result.content);
-});
+# 4. Indexar os repositórios
+make index
 ```
 
-### API Avançada
+## CLI
 
-Para mais controle, você pode usar as classes individuais:
+```bash
+# Indexar todos os repos (incremental)
+npx tsx src/cli/index.ts index
 
-```typescript
-import { RepositoryIndexer, OllamaEmbeddingProvider, MemoryVectorDatabase } from '@cragjs/indexing';
+# Indexar todos os repos (full reindex)
+npx tsx src/cli/index.ts index --full
 
-// Configurar embedding provider (Ollama local)
-const embeddingProvider = new OllamaEmbeddingProvider({
-  baseURL: 'http://localhost:11434',
-  model: 'embeddinggemma',
-  timeout: 60000,
-});
+# Indexar um repo específico
+npx tsx src/cli/index.ts index --repo my-project
 
-// Configurar banco vetorial
-const vectorDatabase = new MemoryVectorDatabase();
+# Buscar no código
+npx tsx src/cli/index.ts query "como funciona autenticação"
 
-// Criar indexador
-const indexer = new RepositoryIndexer({
-  projectPath: '/path/to/your/project',
-  projectId: 'my-project',
-  embeddingProvider,
-  vectorDatabase,
-  storagePath: '.crag_cache',
-});
+# Buscar com context pack (saída formatada para LLM)
+npx tsx src/cli/index.ts query "auth middleware" --pack
 
-// Indexar o repositório
-const repository = await indexer.index({
-  buildDependencyGraph: true,
-  persist: true,
-  excludeDirectories: ['node_modules', '.git', 'dist'],
-});
+# Monitorar mudanças (reindexação automática a cada 30s)
+npx tsx src/cli/index.ts watch
 
-// Buscar no código
-const results = await indexer.query({
-  text: 'como fazer autenticação de usuário?',
-  topK: 5,
-  minSimilarity: 0.3
-});
+# Ver status de indexação por repo
+npx tsx src/cli/index.ts status
+
+# Verificar saúde (DB + Ollama)
+npx tsx src/cli/index.ts health
 ```
 
-## Configuração de Providers
+### Atalhos via Makefile
 
-### Providers de Embedding
-
-Com a API simplificada, você configura o embedding diretamente no objeto de configuração:
-
-```typescript
-// Ollama (Local, Recomendado)
-const rag = new CRAGCore({
-  // ...
-  embedding: {
-    type: 'ollama',
-    model: 'embeddinggemma',
-    baseURL: 'http://localhost:11434',
-    timeout: 60000,
-  },
-  // ...
-});
-
-// Llama.cpp (Mais rápido, sem servidor externo)
-// Requer download de modelo GGUF (ex: nomic-embed-text)
-const rag = new CRAGCore({
-  // ...
-  embedding: {
-    type: 'llama-cpp',
-    modelPath: './models/nomic-embed-text-v1.5.Q4_K_M.gguf', // Caminho para o modelo GGUF
-    dimensions: 768, // Opcional, será auto-detectado
-  },
-  // ...
-});
-
-// ⚠️ Ollama Cloud - NÃO RECOMENDADO (não suporta embeddings)
-// O Ollama Cloud atualmente NÃO suporta o endpoint /api/embeddings.
-// Use Ollama local ou outro provider.
-//
-// const rag = new CRAGCore({
-//   // ...
-//   embedding: {
-//     type: 'ollama-cloud', // ❌ Não funciona - endpoint não existe
-//     model: 'nomic-embed-text',
-//     apiKey: process.env.OLLAMA_API_KEY,
-//   },
-//   // ...
-// });
-
-// OpenAI
-const rag = new CRAGCore({
-  // ...
-  embedding: {
-    type: 'openai',
-    apiKey: process.env.OPENAI_API_KEY!,
-    model: 'text-embedding-ada-002',
-  },
-  // ...
-});
-
-// OpenRouter
-const rag = new CRAGCore({
-  // ...
-  embedding: {
-    type: 'openrouter',
-    apiKey: process.env.OPENROUTER_API_KEY!,
-    model: 'text-embedding-3-small',
-    baseURL: 'https://openrouter.ai/api/v1',
-  },
-  // ...
-});
+```bash
+make index                          # full reindex
+make query Q='como funciona o login' # busca rápida
+make status                          # status dos repos
+make health                          # health check
 ```
 
-### Setup Automatizado do Ollama Cloud
+## API REST
 
-O pacote oferece funções para configurar automaticamente a API key do Ollama Cloud:
+```bash
+# Iniciar servidor (porta 8080)
+npx tsx src/api/server.ts
+```
 
-```typescript
-import { 
-  setupOllamaCloudInteractive, 
-  setupOllamaCloudAuto,
-  validateOllamaCloudApiKey 
-} from '@cragjs/indexing';
+### Endpoints
 
-// Setup interativo (pergunta pela API key e salva no .env)
-await setupOllamaCloudInteractive();
-
-// Setup automático (tenta carregar do .env ou variável de ambiente)
-const apiKey = await setupOllamaCloudAuto();
-if (!apiKey) {
-  // Se não encontrou, fazer setup interativo
-  await setupOllamaCloudInteractive();
-}
-
-// Validar se a API key está funcionando
-const isValid = await validateOllamaCloudApiKey();
-if (!isValid) {
-  console.error('API key inválida ou não configurada');
+**POST /query** - Busca semântica
+```json
+{
+  "q": "como funciona o checkout",
+  "repos": ["my-frontend", "my-backend"],
+  "finalK": 10,
+  "pack": false
 }
 ```
 
-**Obter API Key:**
-1. Acesse https://ollama.com/settings/keys
-2. Crie uma nova API key
-3. Use `setupOllamaCloudInteractive()` ou defina `OLLAMA_API_KEY` no `.env`
+**POST /index** - Disparar indexação
+```json
+{ "repo": "my-project", "full": true }
+```
 
-### Llama.cpp - Modelos Recomendados
+**GET /status** - Status de indexação por repo
 
-O modelo de embedding é **baixado automaticamente** quando você executa `npm install`!
+**GET /health** - Health check (Postgres + Ollama)
 
-**Modelo padrão:**
-- `nomic-embed-text-v1.5` (768 dimensões) - Baixado automaticamente para `./models/`
+## Configuração
 
-**Download manual (se necessário):**
+Toda a configuração fica em `config/rag.yaml`:
+
+```yaml
+repos:
+  - name: my-project
+    path: /absolute/path/to/repo
+    extensions: [".ts", ".tsx", ".js", ".jsx"]
+    excludeDirs: [node_modules, dist, build, .git, __tests__, docs]
+    excludePatterns: ["*.test.*", "*.spec.*", "*.stories.*"]
+    buildDependencyGraph: true
+
+query:
+  lexicalK: 30        # candidatos da busca lexical
+  vectorK: 30         # candidatos da busca vetorial
+  finalK: 10          # resultados finais após merge
+  lexicalWeight: 0.55 # peso lexical (vetor = 1 - lexicalWeight)
+  maxRepos: 8         # máximo de repos por query
+
+embeddingModel: "qwen3-embedding:0.6b"
+embeddingDimensions: 1024
+maxChunkSize: 3000
+watchInterval: 30
+```
+
+### Variáveis de ambiente
+
+| Variável | Default | Descrição |
+|----------|---------|-----------|
+| `DATABASE_URL` | `postgresql://crag:crag@localhost:5433/crag` | Conexão PostgreSQL |
+| `OLLAMA_URL` | `http://127.0.0.1:11434` | URL do Ollama |
+| `RAG_CONFIG` | `config/rag.yaml` | Caminho do config |
+| `EMBEDDING_MODEL` | `qwen3-embedding:0.6b` | Modelo de embedding |
+| `EMBEDDING_DIMENSIONS` | `1024` | Dimensões do embedding |
+| `API_PORT` | `8080` | Porta da API REST |
+| `LOG_LEVEL` | `info` | Nível de log |
+
+## Docker
+
 ```bash
-# O modelo é baixado automaticamente no npm install
-# Mas você pode baixar manualmente se precisar:
-npm run download-model
+# Subir tudo (DB + API + Worker)
+docker compose up -d
 
-# Ou usando huggingface-cli:
-huggingface-cli download nomic-ai/nomic-embed-text-v1.5 \
-  --local-dir models \
-  --include "*.gguf"
+# Somente o banco
+docker compose up -d db
+
+# Derrubar tudo + limpar volumes
+make clean
 ```
 
-**Outros modelos recomendados:**
-- `mxbai-embed-large-v1` (1024 dimensões) - [Download](https://huggingface.co/mixedbread-ai/mxbai-embed-large-v1)
-- `all-minilm-l6-v2` (384 dimensões) - [Download](https://huggingface.co/ggml/all-minilm-l6-v2-gguf)
+O `docker-compose.yml` sobe 3 serviços:
+- **db** - PostgreSQL 16 com pgvector (porta 5433)
+- **api** - Servidor REST Fastify (porta 8080)
+- **worker** - Indexador contínuo (watch mode)
 
-### Uso Avançado com Classes Individuais
+## Como funciona
 
-```typescript
-import { 
-  OllamaEmbeddingProvider, 
-  OllamaCloudEmbeddingProvider,
-  LlamaCppEmbeddingProvider,
-  OpenAIEmbeddingProvider 
-} from '@cragjs/indexing';
-
-// Ollama Local
-const ollamaProvider = new OllamaEmbeddingProvider({
-  baseURL: 'http://localhost:11434',
-  model: 'embeddinggemma',
-  timeout: 60000,
-});
-
-// Llama.cpp (Mais rápido)
-const llamaProvider = new LlamaCppEmbeddingProvider({
-  modelPath: './models/nomic-embed-text-v1.5.Q4_K_M.gguf',
-  dimensions: 768,
-});
-
-// Ollama Cloud
-const ollamaCloudProvider = new OllamaCloudEmbeddingProvider({
-  model: 'nomic-embed-text',
-  apiKey: process.env.OLLAMA_API_KEY!,
-});
-
-// OpenAI
-const openaiProvider = new OpenAIEmbeddingProvider({
-  apiKey: process.env.OPENAI_API_KEY!,
-  model: 'text-embedding-ada-002',
-});
-```
-
-## Configuração de Bancos Vetoriais
-
-Com a API simplificada, você configura o banco vetorial diretamente no objeto de configuração:
-
-```typescript
-// Memória (Rápido, para desenvolvimento)
-const rag = new CRAGCore({
-  // ...
-  vectorDatabase: {
-    type: 'memory',
-  },
-  // ...
-});
-
-// JSON (Persistente, simples)
-const rag = new CRAGCore({
-  // ...
-  vectorDatabase: {
-    type: 'json',
-    storagePath: '.crag_cache',
-    persist: true,
-  },
-  // ...
-});
-
-// Pinecone (Produção, escalável)
-const rag = new CRAGCore({
-  // ...
-  vectorDatabase: {
-    type: 'pinecone',
-    apiKey: process.env.PINECONE_API_KEY!,
-    collectionName: 'code-index',
-  },
-  // ...
-});
-
-// Chroma (Self-hosted)
-const rag = new CRAGCore({
-  // ...
-  vectorDatabase: {
-    type: 'chroma',
-    host: 'http://localhost',
-    port: 8000,
-  },
-  // ...
-});
-```
-
-### Uso Avançado com Classes Individuais
-
-```typescript
-import { MemoryVectorDatabase, JSONVectorDatabase, PineconeVectorDatabase } from '@cragjs/indexing';
-
-// Memória
-const memoryDb = new MemoryVectorDatabase();
-
-// JSON
-const jsonDb = new JSONVectorDatabase({ storagePath: '.crag_cache' });
-
-// Pinecone
-const pineconeDb = new PineconeVectorDatabase({
-  apiKey: process.env.PINECONE_API_KEY!,
-  indexName: 'code-index',
-});
-```
-
-## Configuração de Estratégias de Chunking
-
-Com a API simplificada, você configura a estratégia de chunking no objeto de configuração:
-
-```typescript
-const rag = new CRAGCore({
-  // ...
-  indexing: {
-    chunkingStrategy: 'ast', // 'ast', 'sliding-window', ou 'semantic'
-    maxChunkSize: 100,       // Tamanho máximo do chunk em tokens
-    chunkOverlap: 10,        // Sobreposição entre chunks
-  },
-  // ...
-});
-```
-
-### Uso Avançado com Classes Individuais
-
-```typescript
-import { ASTChunkingStrategy, SlidingWindowChunkingStrategy, FixedSizeChunkingStrategy } from '@cragjs/indexing';
-
-// Por AST (recomendado para código)
-const astChunking = new ASTChunkingStrategy();
-
-// Janela deslizante
-const slidingChunking = new SlidingWindowChunkingStrategy({
-  chunkSize: 512,
-  overlap: 50,
-});
-
-// Tamanho fixo
-const fixedChunking = new FixedSizeChunkingStrategy({
-  chunkSize: 1000,
-});
-```
+1. **Coleta** - FileCollector varre os repos respeitando filtros de extensão/diretório/pattern
+2. **Chunking** - Tree-sitter parseia o código em AST e extrai chunks semânticos (funções, classes, interfaces)
+3. **Embedding** - Ollama gera vetores de 1024 dimensões para cada chunk
+4. **Armazenamento** - Chunks são armazenados no PostgreSQL com embedding (pgvector) e tsvector (full-text)
+5. **Indexação incremental** - Usa `git diff` para detectar arquivos alterados e reindexar apenas o necessário
+6. **Busca híbrida** - Combina similaridade vetorial (coseno) com busca full-text (ts_rank), ponderadas por `lexicalWeight`
 
 ## Licença
 
 MIT
-

@@ -1,11 +1,10 @@
 import type { IVectorDatabase, IVectorDatabaseFactory, VectorDatabaseConfig } from '../interfaces/IVectorDatabase';
 import { MemoryVectorDatabase } from './MemoryVectorDatabase';
-import { JSONVectorDatabase } from './JSONVectorDatabase';
-import { ChromaVectorDatabase } from './ChromaVectorDatabase';
-import { PineconeVectorDatabase } from './PineconeVectorDatabase';
+import { PostgresVectorDatabase } from './PostgresVectorDatabase';
 
 /**
  * Factory for creating vector database instances
+ * Supports: postgres (default), memory (testing)
  */
 export class VectorDatabaseFactory implements IVectorDatabaseFactory {
   async create(config: VectorDatabaseConfig): Promise<IVectorDatabase> {
@@ -13,44 +12,18 @@ export class VectorDatabaseFactory implements IVectorDatabaseFactory {
       case 'memory':
         return new MemoryVectorDatabase();
 
-      case 'json':
-        return new JSONVectorDatabase({
-          storagePath: config.storagePath,
-          persist: config.persist,
-        });
-
-      case 'chroma':
-        return new ChromaVectorDatabase({
-          host: config.host,
-          port: config.port,
-        });
-
-      case 'pinecone':
-        if (!config.apiKey) {
-          throw new Error('Pinecone API key is required');
-        }
-        return new PineconeVectorDatabase({
-          apiKey: config.apiKey,
-          indexName: config.collectionName,
-          dimension: config.distanceMetric ? undefined : 768, // Default for embeddinggemma
-        });
-
-      case 'qdrant':
-        throw new Error('Qdrant backend not yet implemented');
+      case 'postgres':
+        return new PostgresVectorDatabase();
 
       default:
-        throw new Error(`Unknown vector database type: ${config.type}`);
+        throw new Error(`Unknown vector database type: ${config.type}. Supported: postgres, memory`);
     }
   }
 
   /**
-   * Create a default vector database
-   * Uses JSON backend with persistence
+   * Create a default vector database (Postgres)
    */
-  async createDefault(storagePath?: string): Promise<IVectorDatabase> {
-    return new JSONVectorDatabase({
-      storagePath: storagePath || '.analyzer_cache',
-      persist: true,
-    });
+  async createDefault(_storagePath?: string): Promise<IVectorDatabase> {
+    return new PostgresVectorDatabase();
   }
 }

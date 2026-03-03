@@ -1,9 +1,12 @@
 {
   "name": "@cragjs/indexing",
-  "version": "0.1.0",
-  "description": "Módulo de indexação e busca semântica para CodeRAG - Suporta embeddings locais (Ollama) e bancos vetoriais",
+  "version": "1.0.0",
+  "description": "Code RAG - Semantic code search with hybrid indexing (Postgres + pgvector + Ollama)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "crag": "dist/cli/index.js"
+  },
   "files": [
     "dist",
     "README.md"
@@ -12,19 +15,22 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build",
-    "postinstall": "ts-node scripts/download-model.ts",
-    "download-model": "ts-node scripts/download-model.ts",
-    "test:index": "tsx test-indexing-local.ts"
+    "dev:cli": "tsx src/cli/index.ts",
+    "dev:api": "tsx src/api/server.ts",
+    "start:api": "node dist/api/server.js",
+    "start:worker": "node dist/cli/index.js index-watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "code-indexing",
     "semantic-search",
     "embeddings",
     "ollama",
-    "vector-database",
+    "pgvector",
     "rag",
-    "code-analysis"
+    "code-analysis",
+    "hybrid-search"
   ],
   "author": "juliumnix",
   "license": "MIT",
@@ -32,20 +38,25 @@
     "node": ">=18.18.0"
   },
   "dependencies": {
-    "@huggingface/hub": "^2.6.13",
-    "@pinecone-database/pinecone": "^6.1.3",
-    "node-llama-cpp": "^3.14.2",
-    "ollama": "^0.6.2",
+    "@fastify/cors": "^10.0.0",
+    "commander": "^12.0.0",
+    "fastify": "^5.0.0",
+    "js-yaml": "^4.1.0",
+    "pg": "^8.13.0",
+    "pgvector": "^0.2.0",
     "pino": "^9.0.0",
     "tree-sitter": "^0.21.0",
     "tree-sitter-typescript": "^0.23.2",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
+    "@types/pg": "^8.11.0",
     "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
   }
 }

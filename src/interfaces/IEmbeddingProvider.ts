@@ -43,8 +43,8 @@ export interface IEmbeddingProvider {
  * Configuration for embedding providers
  */
 export interface EmbeddingProviderConfig {
-  /** Provider type (ollama, ollama-cloud, llama-cpp, openai, openrouter, etc.) */
-  type: 'ollama' | 'ollama-cloud' | 'llama-cpp' | 'openai' | 'openrouter' | 'simple';
+  /** Provider type */
+  type: 'ollama' | 'simple';
 
   /** Model name to use (for API-based providers) */
   model?: string;

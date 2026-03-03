@@ -1,8 +1,10 @@
 import type { IEmbeddingProvider } from '../../interfaces/IEmbeddingProvider';
+import { settings } from '../../config/settings';
 
 /**
  * Ollama embedding provider
- * Uses Ollama's embedding models (nomic-embed-text, mxbai-embed-large, etc.)
+ * Uses Ollama's /api/embed endpoint for batch embedding
+ * Default model: qwen3-embedding:0.6b
  */
 export class OllamaEmbeddingProvider implements IEmbeddingProvider {
   readonly name = 'ollama';
@@ -19,14 +21,13 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
     baseURL?: string;
     timeout?: number;
     maxRetries?: number;
+    dimensions?: number;
   } = {}) {
-    this.model = config.model || 'nomic-embed-text';
-    this.baseURL = config.baseURL || 'http://localhost:11434';
-    this.timeout = config.timeout || 30000;
+    this.model = config.model || settings.EMBEDDING_MODEL;
+    this.baseURL = (config.baseURL || settings.OLLAMA_URL).replace(/\/+$/, '');
+    this.timeout = config.timeout || 60000;
     this.maxRetries = config.maxRetries || 3;
-
-    // Set dimensions based on model
-    this.dimensions = this.getModelDimensions(this.model);
+    this.dimensions = config.dimensions || this.getModelDimensions(this.model);
     this.maxTokens = this.getModelMaxTokens(this.model);
   }
 
@@ -36,33 +37,21 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
   }
 
   async embedBatch(texts: string[], isQuery?: boolean): Promise<number[][]> {
-    const embeddings: number[][] = [];
+    const formattedTexts = isQuery ? texts.map(t => this.addQueryPrefix(t)) : texts;
+    let lastError: Error | null = null;
 
-    for (const text of texts) {
-      let lastError: Error | null = null;
-
-      for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-        try {
-          const embedding = await this.fetchEmbedding(text);
-          embeddings.push(embedding);
-          lastError = null;
-          break;
-        } catch (error) {
-          lastError = error instanceof Error ? error : new Error(String(error));
-
-          // Wait before retry (exponential backoff)
-          if (attempt < this.maxRetries - 1) {
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-          }
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        return await this.fetchBatchEmbeddings(formattedTexts);
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt < this.maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
         }
-      }
-
-      if (lastError) {
-        throw new Error(`Failed to get embedding after ${this.maxRetries} attempts: ${lastError.message}`);
       }
     }
 
-    return embeddings;
+    throw new Error(`Failed to get embeddings after ${this.maxRetries} attempts: ${lastError?.message}`);
   }
 
   async healthCheck(): Promise<boolean> {
@@ -72,29 +61,26 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
         signal: AbortSignal.timeout(5000),
       });
 
-      if (!response.ok) {
-        return false;
-      }
+      if (!response.ok) return false;
 
-      const data = await response.json() as any;
-
-      // Check if our model is available
+      const data = await response.json() as { models?: Array<{ name: string }> };
       const models = data.models || [];
-      return models.some((m: any) => m.name.includes(this.model));
+      return models.some(m => m.name.includes(this.model.split(':')[0]));
     } catch {
       return false;
     }
   }
 
-  private async fetchEmbedding(text: string): Promise<number[]> {
-    const response = await fetch(`${this.baseURL}/api/embeddings`, {
+  /**
+   * Batch embedding using Ollama /api/embed (native batch support)
+   */
+  private async fetchBatchEmbeddings(texts: string[]): Promise<number[][]> {
+    const response = await fetch(`${this.baseURL}/api/embed`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: this.model,
-        prompt: text,
+        input: texts,
       }),
       signal: AbortSignal.timeout(this.timeout),
     });
@@ -104,52 +90,63 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
       throw new Error(`Ollama API error: ${response.status} ${errorText}`);
     }
 
-    const data = await response.json() as any;
+    const data = await response.json() as { embeddings?: number[][] };
 
-    if (!data.embedding || !Array.isArray(data.embedding)) {
-      throw new Error('Invalid response from Ollama API: missing embedding');
+    if (!data.embeddings || !Array.isArray(data.embeddings)) {
+      throw new Error('Invalid response from Ollama API: missing embeddings');
     }
 
-    return data.embedding;
+    return data.embeddings;
+  }
+
+  // Instruction prefixes per model — applied to queries only, not documents
+  private static readonly QUERY_PREFIXES: Record<string, string> = {
+    'qwen3-embedding': 'Instruct: Given a code search query, retrieve relevant code snippets\nQuery: ',
+    'nomic-embed-text': 'search_query: ',
+    'nomic-embed-code': 'Represent this query for searching relevant code: ',
+    'mxbai-embed-large': 'Represent this sentence for searching relevant passages: ',
+    'snowflake-arctic-embed': 'Represent this sentence for searching relevant passages: ',
+    'bge-m3': 'Represent this sentence for searching relevant passages: ',
+  };
+
+  private addQueryPrefix(text: string): string {
+    for (const [modelKey, prefix] of Object.entries(OllamaEmbeddingProvider.QUERY_PREFIXES)) {
+      if (this.model.includes(modelKey)) return prefix + text;
+    }
+    return text;
   }
 
   private getModelDimensions(model: string): number {
-    // Common Ollama embedding models and their dimensions
     const modelDimensions: Record<string, number> = {
+      'qwen3-embedding': 1024,
       'nomic-embed-text': 768,
       'mxbai-embed-large': 1024,
       'all-minilm': 384,
       'snowflake-arctic-embed': 1024,
-      'embeddinggemma': 768,
+      'bge-m3': 1024,
     };
 
     for (const [key, dims] of Object.entries(modelDimensions)) {
-      if (model.includes(key)) {
-        return dims;
-      }
+      if (model.includes(key)) return dims;
     }
 
-    // Default to 768 if unknown
-    return 768;
+    return settings.EMBEDDING_DIMENSIONS;
   }
 
   private getModelMaxTokens(model: string): number {
-    // Most embedding models support 512 or 8192 tokens
     const modelMaxTokens: Record<string, number> = {
+      'qwen3-embedding': 8192,
       'nomic-embed-text': 8192,
       'mxbai-embed-large': 512,
       'all-minilm': 512,
       'snowflake-arctic-embed': 512,
-      'embeddinggemma': 8192,
+      'bge-m3': 8192,
     };
 
     for (const [key, tokens] of Object.entries(modelMaxTokens)) {
-      if (model.includes(key)) {
-        return tokens;
-      }
+      if (model.includes(key)) return tokens;
     }
 
-    return 512;
+    return 8192;
   }
 }
-

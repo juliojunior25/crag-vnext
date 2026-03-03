@@ -78,8 +78,8 @@ export interface IVectorDatabase {
  * Configuration for vector database backends
  */
 export interface VectorDatabaseConfig {
-  /** Backend type (chroma, pinecone, qdrant, json, etc.) */
-  type: 'chroma' | 'pinecone' | 'qdrant' | 'json' | 'memory';
+  /** Backend type */
+  type: 'postgres' | 'memory';
 
   /** Storage path (for local backends) */
   storagePath?: string;

@@ -1,0 +1,52 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: crag
+      POSTGRES_PASSWORD: crag
+      POSTGRES_DB: crag
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crag"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    command: ["dist/api/server.js"]
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql://crag:crag@db:5432/crag
+      OLLAMA_URL: http://host.docker.internal:11434
+      RAG_CONFIG: /app/config/rag.yaml
+      API_PORT: "8080"
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  worker:
+    build: .
+    command: ["dist/cli/index.js", "index-watch", "--interval", "30", "--config", "/app/config/rag.yaml"]
+    environment:
+      DATABASE_URL: postgresql://crag:crag@db:5432/crag
+      OLLAMA_URL: http://host.docker.internal:11434
+      RAG_CONFIG: /app/config/rag.yaml
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  pgdata:

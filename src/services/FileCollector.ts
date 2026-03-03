@@ -44,12 +44,15 @@ export const NON_CORE_PATH_PATTERNS: RegExp[] = [
  * Valid file extensions for code analysis
  */
 export const VALID_EXTENSIONS = [
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.mjs',
-  '.cjs',
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+  '.py', '.go', '.rs', '.java', '.kt',
+  '.rb', '.php', '.swift', '.cs',
+  '.c', '.cpp', '.h', '.hpp',
+  '.vue', '.svelte',
+  '.sql', '.graphql', '.gql',
+  '.yaml', '.yml', '.toml', '.json',
+  '.sh', '.bash',
+  '.md', '.mdx',
 ];
 
 /**
@@ -288,7 +291,16 @@ export class FileCollector {
       return false;
     }
 
-    // TODO: Add support for include/exclude glob patterns
+    // Check exclude patterns (glob-like: *.test.*, *.spec.*, etc.)
+    if (this.config.excludePatterns.length > 0) {
+      const fileName = path.basename(filePath);
+      for (const pattern of this.config.excludePatterns) {
+        const regex = new RegExp(
+          '^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$'
+        );
+        if (regex.test(fileName)) return false;
+      }
+    }
 
     return true;
   }

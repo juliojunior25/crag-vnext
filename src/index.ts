@@ -13,16 +13,14 @@ export * from './models';
 // Interfaces
 export * from './interfaces';
 
-// Utils (exportar apenas os principais)
+// Config
+export * from './config';
+
+// Database
+export * from './db';
+
+// Utils
 export { createTreeLogger, treeLogger, logger, setLogLevel } from './utils/logger';
 export { inferLanguageFromFilePath } from './utils/language';
-export {
-  hasOllamaCloudApiKey,
-  getOllamaCloudApiKey,
-  setOllamaCloudApiKey,
-  saveOllamaCloudApiKeyToEnv,
-  setupOllamaCloudInteractive,
-  setupOllamaCloudAuto,
-  validateOllamaCloudApiKey,
-} from './utils/ollamaCloudSetup';
-
+export { formatContextPack } from './utils/contextPack';
+export { sha256 } from './utils/hash';

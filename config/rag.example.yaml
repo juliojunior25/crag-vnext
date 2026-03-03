@@ -1,0 +1,51 @@
+# CRAG Configuration
+# Copy to config/rag.yaml and adjust paths
+
+repos:
+  - name: my-project
+    path: /path/to/your/project
+    extensions: [".ts", ".tsx", ".js", ".jsx", ".py", ".go"]
+    excludeDirs: ["node_modules", "dist", "build", ".git", "coverage"]
+    excludePatterns: ["*.test.*", "*.spec.*", "*.stories.*", "*.mock.*"]
+    buildDependencyGraph: true
+
+ignore:
+  dirs: ["node_modules", "dist", "build", ".git", "coverage", "__tests__", "docs"]
+  patterns:
+    - "*.test.*"
+    - "*.spec.*"
+    - "*.stories.*"
+    - "*.mock.*"
+    - "CHANGELOG*"
+    - "package-lock.json"
+    - "*.min.js"
+    - "*.min.css"
+    - "*.snap"
+    - "*.generated.*"
+
+query:
+  lexicalK: 30
+  vectorK: 30
+  finalK: 10
+  lexicalWeight: 0.55
+  maxRepos: 5
+
+# Embedding model options:
+#   qwen3-embedding:0.6b  → fast, good quality (default)
+#   qwen3-embedding:4b    → better quality, 2560 dims (needs HNSW dim truncation to 2000)
+#   bge-m3                → good for multilingual + code
+embeddingModel: "qwen3-embedding:0.6b"
+embeddingDimensions: 1024
+maxChunkSize: 3000
+watchInterval: 30
+
+reranker:
+  enabled: false
+  model: "qwen3-reranker:0.6b"
+  candidateK: 30
+
+search:
+  engine: "fts"        # "bm25" (requires pg_textsearch) | "fts" (ts_rank_cd fallback)
+  bm25:
+    k1: 1.2            # term frequency saturation
+    b: 0.75            # length normalization
