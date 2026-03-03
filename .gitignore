@@ -2,7 +2,6 @@ node_modules/
 dist/
 .analyzer_cache/
 .crag_cache/
-models/
 *.log
 .DS_Store
 .env
