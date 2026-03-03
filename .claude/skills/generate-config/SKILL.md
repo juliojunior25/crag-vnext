@@ -1,3 +1,8 @@
+---
+name: generate-config
+description: Gera o arquivo config/rag.yaml para o CRAG de forma interativa. Use quando o usuario pedir para configurar o CRAG, gerar o yaml, adicionar repos, ou setup inicial.
+---
+
 # CRAG Config Generator
 
 Skill especializada em gerar o arquivo `config/rag.yaml` para o CRAG de forma interativa.
